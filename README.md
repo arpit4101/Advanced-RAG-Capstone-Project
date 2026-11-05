@@ -53,37 +53,60 @@ The entire system is exposed via a full-featured **Streamlit Web Application** f
 
 ## 🏛️ High-Level Architecture
 
-The system decouples **Offline Data Ingestion & Indexing** from **Online Query Expansion, Hybrid Retrieval, Reranking, and Generation**.
+The system decouples **Offline Data Ingestion & Hierarchical Indexing** from **Online Multi-Query Expansion, Hybrid Retrieval, Cross-Encoder Reranking, and Grounded Generation**.
 
 ```mermaid
-flowchart TD
-    subgraph INGESTION["1. Document Ingestion & Hierarchical Indexing"]
-        A["Source Documents (.pdf, .docx, .txt)"] --> B["Multi-Format Document Loaders"]
-        B --> C["Regex Text Cleaning & Metadata Extraction"]
-        C --> D["Parent-Child Recursive Character Splitting"]
-        D -->|Parent Chunks 1600 chars| E[("Persistent Document Store: doc_store.json")]
-        D -->|Child Chunks 400 chars| F["OpenAI text-embedding-3-small"]
-        F --> G[("Dense Vector Store: FAISS / Pinecone")]
-        E -.->|Build In-Memory| H["Sparse BM25 Index"]
+flowchart TB
+    %% ==================== STYLING DEFINITIONS ====================
+    classDef source fill:#1e293b,stroke:#475569,stroke-width:2px,color:#f8fafc,font-weight:bold
+    classDef process fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#eff6ff
+    classDef storage fill:#31102f,stroke:#d946ef,stroke-width:2px,color:#fdf4ff,font-weight:bold
+    classDef retrieval fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5
+    classDef rerank fill:#431407,stroke:#f97316,stroke-width:2px,color:#fff7ed
+    classDef llm fill:#1e1b4b,stroke:#8b5cf6,stroke-width:2px,color:#f5f3ff,font-weight:bold
+    classDef output fill:#14532d,stroke:#22c55e,stroke-width:2px,color:#f0fdf4,font-weight:bold
+
+    %% ==================== STAGE 1: OFFLINE INGESTION ====================
+    subgraph INGESTION["📥 STAGE 1: Offline Document Ingestion & Hierarchical Indexing"]
+        direction TB
+        A[/"📄 Source Corpus<br/>(.pdf, .docx, .txt)"/]:::source --> B["⚙️ Multi-Format Loaders<br/>(PyPDF / Docx2txt / Text)"]:::process
+        B --> C["🧹 Regex Text Sanitization<br/>& Metadata Enrichment"]:::process
+        C --> D{"✂️ Hierarchical Parent-Child<br/>Recursive Text Splitter"}:::process
+        
+        D -->|"Parent Chunks<br/>(1600 chars, 200 overlap)"| E[("🗄️ Persistent Document Store<br/>(doc_store.json)")]:::storage
+        D -->|"Child Chunks<br/>(400 chars, 60 overlap)"| F["🧬 OpenAI Embeddings<br/>(text-embedding-3-small)"]:::llm
+        
+        F -->|"1536-d Vectors"| G[("🧭 Dense Vector Index<br/>(FAISS / Pinecone)")]:::storage
+        E -.->|"Tokenize Corpus<br/>(In-Memory Build)"| H[("📊 Sparse Lexical Index<br/>(Rank-BM25)")]:::storage
     end
 
-    subgraph QUERY["2. Multi-Stage Retrieval & Synthesis"]
-        Q["User Query & Chat History"] --> I["Multi-Query Expansion (GPT-4o-Mini)"]
-        I -->|Original + N Query Variants| J["Hybrid Retrieval Engine"]
+    %% ==================== STAGE 2: ONLINE RETRIEVAL ====================
+    subgraph RETRIEVAL["🔍 STAGE 2: Query Expansion & Dual-Mode Hybrid Retrieval"]
+        direction TB
+        Q(["💬 User Query"]):::source --> I["🧠 Multi-Query Expansion<br/>& Coreference Disambiguation<br/>(GPT-4o-Mini)"]:::llm
+        MEM[("🔄 Sliding-Window<br/>Chat History (k=4)")]:::storage -.->|"Conversational Context"| I
         
-        G -->|Dense Similarity Search| J
-        H -->|Sparse Keyword Search| J
+        I -->|"Original Query +<br/>3 Semantic Variants"| J["⚡ Hybrid Retrieval Engine<br/>(Parallel Dense + Sparse Search)"]:::retrieval
         
-        J --> K["Reciprocal Rank Fusion (RRF)"]
-        K -->|Top Fused Child Chunks| L["Parent Context Recovery Engine"]
-        E -->|O(1) Hash Map Lookup| L
+        G ===>|"Cosine / L2 Top-K"| J
+        H ===>|"BM25 Lexical Top-K"| J
         
-        L -->|Parent Chunks| M["Cross-Encoder Reranker (ms-marco-MiniLM-L-6-v2)"]
-        M --> N["Relevance Score Thresholding (MIN_RERANK_SCORE)"]
-        N --> O["Context Refinement & Token Budget Manager"]
+        J -->|"Multi-Query Candidate Lists"| K["⚖️ Reciprocal Rank Fusion<br/>(RRF, k=60)"]:::retrieval
+        K -->|"Top Fused Child IDs"| L["🔗 Parent Context Recovery<br/>(Child-to-Parent Deduplication)"]:::retrieval
+        E ===>|"O(1) Hash Map Lookup"| L
+    end
+
+    %% ==================== STAGE 3: RERANKING & SYNTHESIS ====================
+    subgraph SYNTHESIS["🎯 STAGE 3: Neural Reranking, Context Budgeting & Synthesis"]
+        direction TB
+        L -->|"Recovered 1600-char<br/>Parent Documents"| M["🎯 Cross-Encoder Neural Reranker<br/>(ms-marco-MiniLM-L-6-v2)<br/>+ Keyword Overlap Fallback"]:::rerank
+        M -->|"Joint Cross-Attention Scores"| N["🛡️ Relevance Threshold Gate<br/>(Filter: score >= MIN_RERANK_SCORE)"]:::rerank
+        N -->|"Verified Relevant Passages"| O["📏 Dynamic Context Budget Manager<br/>(Hard Cap: MAX_CONTEXT_CHARS = 8000)"]:::rerank
         
-        O -->|Curated Context + Sliding History| P["LLM Synthesis Engine (GPT-4o-Mini)"]
-        P --> RES["Grounded Answer + Verifiable Source Citations"]
+        O -->|"Curated & Indexed Context"| P["🤖 Grounded Answer Synthesis<br/>(GPT-4o-Mini, temp=0.0)"]:::llm
+        MEM -.->|"Recent Dialogue"| P
+        
+        P --> RES(["✅ Grounded Response + Verifiable Citations<br/>+ White-Box Retrieval Telemetry"]):::output
     end
 ```
 
@@ -151,7 +174,46 @@ src/advanced_rag_capstone_project/
 
 ## 🔄 System Lifecycle & Data Flow
 
-### Ingestion Lifecycle
+### 1. End-to-End Interactive Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 👤 User
+    participant UI as 🖥️ Streamlit UI (app.py)
+    participant Pipe as ⚙️ RAG Pipeline
+    participant LLM as 🧠 GPT-4o-Mini
+    participant Hybrid as 🔍 Hybrid Retriever (FAISS/Pinecone + BM25)
+    participant Store as 🗄️ Doc Store (JSON)
+    participant Rerank as 🎯 Cross-Encoder Reranker
+
+    User->>UI: Submits Question
+    UI->>Pipe: run_rag_pipeline(query, chat_history)
+    Pipe->>LLM: Expand Query + Disambiguate History
+    LLM-->>Pipe: Returns Original + 3 Semantic Query Variants
+    
+    loop For Each Query Variant
+        Pipe->>Hybrid: Dense Vector Search + Sparse BM25 Search
+    end
+    Hybrid-->>Pipe: Ranked Child Chunk Lists
+    
+    Pipe->>Pipe: Reciprocal Rank Fusion (RRF, k=60)
+    Pipe->>Store: O(1) Parent Chunk Lookup (parent_id)
+    Store-->>Pipe: Deduplicated 1600-char Parent Chunks
+    
+    Pipe->>Rerank: Score (Query, Parent) Pairs via MS-MARCO MiniLM
+    Rerank-->>Pipe: Cross-Attention Relevance Scores
+    
+    Pipe->>Pipe: Filter (score >= -4.0) & Enforce Budget (<= 8000 chars)
+    Pipe->>LLM: Synthesize Grounded Answer with Numbered Context
+    LLM-->>Pipe: Cited Response ([1], [2])
+    Pipe-->>UI: Answer + Citations + Full Debug Telemetry
+    UI-->>User: Render Response & White-Box Inspector
+```
+
+### 2. Ingestion & Generation Function Call Graphs
+
+#### Ingestion Lifecycle
 
 ```
 [Raw Files: PDF/DOCX/TXT]
@@ -173,7 +235,7 @@ src/advanced_rag_capstone_project/
           └───► create_vector_store() ──► [Embed children via text-embedding-3-small -> FAISS / Pinecone]
 ```
 
-### Generation Lifecycle
+#### Generation Lifecycle
 
 ```
 [User Question]
