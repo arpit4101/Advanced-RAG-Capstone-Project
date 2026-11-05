@@ -155,7 +155,7 @@ def render_document_management() -> None:
         summary = index_summary()
         st.success(
             f"Index ready: {summary['children']} child chunks"
-            f"from {len(summary['files'])} files(s)"
+            f" from {len(summary['files'])} files(s)"
         )
         with st.expander("Index files"):
             for filename in summary['files']:
