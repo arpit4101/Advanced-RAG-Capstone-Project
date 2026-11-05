@@ -28,7 +28,7 @@ def make_splitter(chunk_size: int, chunk_overlap: int) -> RecursiveCharacterText
         chunk_size = chunk_size,
         chunk_overlap = chunk_overlap,
         separators = ["\n\n", "\n", ". ", " ", "! ", "? ", "; ", ""],
-        length_funtion = len
+        length_function = len
     )
 
 def split_documents(documents : list[Document]) -> Tuple[List[Document], List[Document]]:
@@ -57,7 +57,7 @@ def split_documents(documents : list[Document]) -> Tuple[List[Document], List[Do
     # than across the whole batch) means a chunk always gets the same id no
     # matter which other documents were processed alongside it - which is what
     # lets "update_index" recognise and skip a file it has already indexed.
-    parents_per_file: Dict[str, int] = {}
+    parents_per_file: dict[str, int] = {}
 
     for document in documents:
         filename = document.metadata.get("filename", "unknown")
@@ -67,7 +67,7 @@ def split_documents(documents : list[Document]) -> Tuple[List[Document], List[Do
             parents_per_file[filename] = parent_number + 1
             parent_id = f"{filename}::{parent_number}"
 
-            parent_metadata = Dict(document.metadata)
+            parent_metadata = dict(document.metadata)
             parent_metadata['parent_id'] = parent_id
             parent_metadata['section'] = guess_section(parent_text)
 
@@ -81,7 +81,7 @@ def split_documents(documents : list[Document]) -> Tuple[List[Document], List[Do
     return parents, children
 
 
-def build_parent_lookup(parents: List[Document]) -> Dict[str, Document]:
+def build_parent_lookup(parents: List[Document]) -> dict[str, Document]:
     """
     Build a dictionary that maps a parent_id to its parent Document.
     Retrieval gives us child chunks; we need an instant way to fetch the matching parent. A dictionary lookup is 0(1), which is as simple and fast as this problem needs to be.

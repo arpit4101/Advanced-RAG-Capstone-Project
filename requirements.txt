@@ -50,3 +50,6 @@ python-docx>=1.1.0
 
 # Tests.
 pytest>=8.0.0
+
+# Transformer for CrossEncoder
+sentence-transformers
