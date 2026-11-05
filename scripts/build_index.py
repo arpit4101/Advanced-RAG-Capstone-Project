@@ -36,7 +36,7 @@ def main() -> None:
     print("\nIndex built successfully.")
     print(f"    Pages / documents loaded : {stats['documents']}")
     print(f"    Parent Chunks(Context) : {stats['parents']}")
-    print(f"    Child Chunks(searched) : {stats['chilren']}")
+    print(f"    Child Chunks(searched) : {stats['children']}")
     print(f"    Vector Database        : {config.VECTOR_DB}")
     print("\nNow run: streamlit run app.py")
 

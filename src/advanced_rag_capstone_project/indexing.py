@@ -126,6 +126,7 @@ def create_vector_store(children: List[Document]) -> VectorStore:
 
     if config.VECTOR_DB == "pinecone":
         config.check_pinecone_config()
+        _ensure_pinecone_index()
         PineconeVectorStore = _pinecone_class()
         return PineconeVectorStore.from_documents(
             children,
@@ -196,6 +197,43 @@ def _faiss_class():
 
     return FAISS
 
+def _ensure_pinecone_index(dimension: int = 1536) -> None:
+    """
+    Check whether the Pinecone index exists; if not, create it automatically.
+
+    Uses Pinecone's ServerlessSpec with the configured cloud and region
+    (defaults to aws / us-east-1). Polls until the index status is 'ready'.
+    """
+    import time
+    try:
+        from pinecone import Pinecone, ServerlessSpec
+    except ImportError as e:
+        raise ImportError(f"VECTOR_DB=pinecone needs the pinecone package, do pip install it: {e}")
+
+    pc = Pinecone(api_key=config.PINECONE_API_KEY)
+    existing_indexes = [idx.name for idx in pc.list_indexes()]
+
+    if config.PINECONE_INDEX_NAME not in existing_indexes:
+        logger.info(
+            "Pinecone index '%s' not found. Creating it automatically (dimension=%d, metric='cosine')...",
+            config.PINECONE_INDEX_NAME,
+            dimension,
+        )
+        pc.create_index(
+            name=config.PINECONE_INDEX_NAME,
+            dimension=dimension,
+            metric="cosine",
+            spec=ServerlessSpec(
+                cloud=config.PINECONE_CLOUD,
+                region=config.PINECONE_REGION,
+            ),
+        )
+        logger.info("Waiting for Pinecone index '%s' to become ready...", config.PINECONE_INDEX_NAME)
+        while not pc.describe_index(config.PINECONE_INDEX_NAME).status["ready"]:
+            time.sleep(1)
+        logger.info("Pinecone index '%s' is ready.", config.PINECONE_INDEX_NAME)
+
+
 def _pinecone_class():
     """
     Import the Pinecone vector store class only when Pinecone is selected.
@@ -211,6 +249,7 @@ def _pinecone_class():
     """
     try:
         from langchain_pinecone import PineconeVectorStore
+        return PineconeVectorStore
 
     except ImportError as e:
         raise ImportError("VECTOR_DB=pinecone needs the pinecone package, do pip install it. : ", e)
@@ -330,12 +369,20 @@ def _clear_pinecone_namespace() -> None:
     try:
         from pinecone import Pinecone
 
-        pinecone = Pinecone(api_key= config.PINECONE_API_KEY)
-        index = pinecone.Index(config.PINECONE_INDEX_NAME)
-        index.delete(delete_all = True, namespace = config.PINECONE_NAMESPACE)
+        pinecone = Pinecone(api_key=config.PINECONE_API_KEY)
+        existing_indexes = [idx.name for idx in pinecone.list_indexes()]
+
+        # Only attempt deletion if the index actually exists
+        if config.PINECONE_INDEX_NAME in existing_indexes:
+            index = pinecone.Index(config.PINECONE_INDEX_NAME)
+            index.delete(delete_all=True, namespace=config.PINECONE_NAMESPACE)
+            logger.info("Cleared Pinecone namespace '%s'", config.PINECONE_NAMESPACE)
+        
+        else:
+            logger.info("Pinecone index '%s' does not exist yet; skipping namespace clear.", config.PINECONE_INDEX_NAME)
     
     except Exception as e:
-        logger.warning("Could not clear pinecone namespace %s", e)
+        logger.warning("Could not clear pinecone namespace: %s", e)
 
 
 def index_exists() -> bool:

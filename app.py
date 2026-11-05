@@ -183,7 +183,7 @@ def render_document_management() -> None:
     if st.button("🗑️ Clear / Rebuild Vector DB", width = "stretch"):
         clear_index()
         st.session_state.pipeline = None
-        st.succes("Index cleared, Click 'Build Vector DB' to start again")
+        st.success("Index cleared, Click 'Build Vector DB' to start again")
 
 def run_build() -> None:
     """
@@ -200,7 +200,7 @@ def run_build() -> None:
 
         st.session_state.pipeline = None
         st.success(
-            f"Indexed {stats['documents']} pages -> {stats['parents']} patent chunks"
+            f"Indexed {stats['documents']} pages -> {stats['parents']} parent chunks"
             f" -> {stats['children']} child chunks"
         )
 
@@ -227,7 +227,7 @@ def run_update() -> None:
                 f"(skipped {stats['skipped_children']} already indexed)."
             )
         else:
-            st.success(f"Built a new index with {stats['chilren']} chunks.")
+            st.success(f"Built a new index with {stats['children']} chunks.")
 
     except Exception as e:
         st.error(f"Update failed : {e}")
@@ -249,7 +249,7 @@ def render_debug_panel(debug: dict) -> None:
         st.write(debug['original_query'])
 
         st.markdown("**2. Generated queries (multi-query retrieval)**")
-        for query in debug['generate_queries']:
+        for query in debug['generated_queries']:
             st.write(f"- {query}")
 
         st.markdown(

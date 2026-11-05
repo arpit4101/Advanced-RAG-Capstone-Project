@@ -41,11 +41,13 @@ OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 LLM_TEMPERATURE = 0.0
 
-# FAISS
+# FAISS / Pinecone
 VECTOR_DB = os.getenv("VECTOR_DB", "faiss").strip().lower()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "advanced-rag")
 PINECONE_NAMESPACE = os.getenv("PINECONE_NAMESPACE", "default")
+PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws").strip().lower()
+PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1").strip().lower()
 
 # Chunking
 PARENT_CHUNK_SIZE = _get_int("PARENT_CHUNK_SIZE", default=1600)
